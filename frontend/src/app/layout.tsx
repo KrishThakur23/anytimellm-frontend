@@ -1,0 +1,57 @@
+import type { Metadata } from "next";
+import "./globals.css";
+import LenisProvider from "@/components/layout/LenisProvider";
+
+export const metadata: Metadata = {
+  title: {
+    template: "%s | AnytimeLLM",
+    default: "Home | AnytimeLLM",
+  },
+  description: "AI Operating System for local businesses. Every message, order, question, and lead handled automatically across WhatsApp and the Web. Set up in 3 minutes.",
+  icons: {
+    icon: [
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+      { url: '/favicon-32x32.png', sizes: '32x32', type: 'image/png' },
+      { url: '/favicon-16x16.png', sizes: '16x16', type: 'image/png' },
+    ],
+    apple: [
+      { url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
+    ],
+    other: [
+      {
+        rel: 'mask-icon',
+        url: '/favicon.svg',
+      },
+    ],
+  },
+  manifest: '/site.webmanifest',
+};
+
+import GlobalAIAssistant from "@/components/ui/GlobalAIAssistant";
+import WhatsAppWidget from "@/components/ui/WhatsAppWidget";
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html lang="en">
+      <head>
+        {/* SaaS typography — Space Grotesk for display, Inter for body */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+        {/* Material Symbols for dashboard icons */}
+        <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
+      </head>
+      <body>
+        <LenisProvider>
+          {children}
+          <WhatsAppWidget />
+          <GlobalAIAssistant />
+        </LenisProvider>
+      </body>
+    </html>
+  );
+}
