@@ -141,7 +141,7 @@ export default function IntegrationsTab({ activeBusiness, copyToClipboard, onUpd
           appId: config.meta_app_id,
           autoLogAppEvents: true,
           xfbml: true,
-          version: 'v21.0',
+          version: 'v26.0',
           cookie: true
         });
         resolve((window as any).FB);
@@ -228,7 +228,7 @@ export default function IntegrationsTab({ activeBusiness, copyToClipboard, onUpd
           response_type: "code",
           override_default_response_type: true,
           extras: {
-            feature: "whatsapp_business_app_onboarding",
+            featureType: "whatsapp_business_app_onboarding",
             sessionInfoVersion: "3",
             setup: {}
           }
