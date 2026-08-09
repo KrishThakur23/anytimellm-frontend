@@ -136,13 +136,13 @@ export default function IntegrationsTab({ activeBusiness, copyToClipboard, onUpd
 
     return new Promise((resolve, reject) => {
       // Setup async initialization callback
-      (window as any).fbAsyncInit = function() {
+      (window as any).fbAsyncInit = function () {
         (window as any).FB.init({
-          appId            : config.meta_app_id,
-          autoLogAppEvents : true,
-          xfbml            : true,
-          version          : 'v21.0',
-          cookie           : true
+          appId: config.meta_app_id,
+          autoLogAppEvents: true,
+          xfbml: true,
+          version: 'v21.0',
+          cookie: true
         });
         resolve((window as any).FB);
       };
@@ -204,7 +204,7 @@ export default function IntegrationsTab({ activeBusiness, copyToClipboard, onUpd
           try {
             const rawData = event.data;
             const data = typeof rawData === "string" ? JSON.parse(rawData) : rawData;
-            
+
             if (data && data.type === "WA_EMBEDDED_SIGNUP") {
               console.log("[META EMBEDDED SIGNUP EVENT]:", data);
               if (data.event === "FINISH" && data.data) {
@@ -228,7 +228,7 @@ export default function IntegrationsTab({ activeBusiness, copyToClipboard, onUpd
           response_type: "code",
           override_default_response_type: true,
           extras: {
-            feature: "whatsapp_embedded_signup",
+            feature: "whatsapp_business_app_onboarding",
             sessionInfoVersion: "3",
             setup: {}
           }
@@ -298,10 +298,10 @@ export default function IntegrationsTab({ activeBusiness, copyToClipboard, onUpd
     setInstaError(null);
     try {
       const handle = instaUsernameInput.trim() || "@" + activeBusiness.name.toLowerCase().replace(/\s+/g, "_");
-      
+
       const pageId = instaDevMode ? undefined : instaPageIdInput.trim();
       const accessToken = instaDevMode ? undefined : instaAccessTokenInput.trim();
-      
+
       if (!instaDevMode && (!pageId || !accessToken)) {
         throw new Error("Please enter both Page ID and Access Token for real connection.");
       }
@@ -378,14 +378,14 @@ export default function IntegrationsTab({ activeBusiness, copyToClipboard, onUpd
       </div>
 
       <div ref={containerRef} className="space-y-8">
-        
+
         {/* ==================== WORKSPACE PROFILE SETTINGS ==================== */}
         <div className="space-y-4 bg-white border border-slate-200/60 p-6 rounded-2xl shadow-sm">
           <div className="flex items-center gap-2">
             <span className="material-symbols-outlined text-slate-600 font-bold">domain</span>
             <h2 className="font-display text-lg font-bold text-slate-700 uppercase tracking-wide">Workspace Profile</h2>
           </div>
-          
+
           <div className="max-w-md space-y-4">
             <div>
               <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
@@ -437,7 +437,7 @@ export default function IntegrationsTab({ activeBusiness, copyToClipboard, onUpd
             <span className="material-symbols-outlined text-emerald-600 font-bold">chat</span>
             <h2 className="font-display text-lg font-bold text-slate-700 uppercase tracking-wide">WhatsApp Channel</h2>
           </div>
-          
+
           {waError && (
             <div className="p-4 bg-red-50 border border-red-200 rounded-xl flex items-start gap-3 text-red-750 text-sm font-mono">
               <span className="material-symbols-outlined text-[16px] text-red-600 shrink-0 mt-0.5">error</span>
@@ -551,7 +551,7 @@ export default function IntegrationsTab({ activeBusiness, copyToClipboard, onUpd
                   <p className="font-body text-xs text-slate-500 mt-1">
                     Initiate setup in Meta Developer Dashboard.
                   </p>
-                  
+
                   {/* Developer Mock Toggle */}
                   <div className="flex items-center gap-2 mt-4 font-mono text-[9px]">
                     <input
@@ -592,7 +592,7 @@ export default function IntegrationsTab({ activeBusiness, copyToClipboard, onUpd
             <Instagram className="text-fuchsia-600 w-5 h-5 shrink-0" />
             <h2 className="font-display text-lg font-bold text-slate-700 uppercase tracking-wide">Instagram Channel</h2>
           </div>
-          
+
           {instaError && (
             <div className="p-4 bg-red-50 border border-red-200 rounded-xl flex items-start gap-3 text-red-750 text-sm font-mono">
               <span className="material-symbols-outlined text-[16px] text-red-600 shrink-0 mt-0.5">error</span>
@@ -696,7 +696,7 @@ export default function IntegrationsTab({ activeBusiness, copyToClipboard, onUpd
                       Specify the Instagram handle to deploy the AI chatbot takeover.
                     </p>
                   </div>
-                  
+
                   <div className="max-w-md flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-1">
                     <span className="font-mono text-slate-400 font-bold text-sm">@</span>
                     <input
