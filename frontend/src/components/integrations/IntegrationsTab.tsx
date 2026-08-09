@@ -32,14 +32,17 @@ interface ChannelStatus {
   connected: boolean;
   provider?: string;
   phone_number_id?: string;
+  waba_id?: string;
   display_name?: string;
   verify_token?: string;
   page_id?: string;
   username?: string;
+  coexistence_enabled?: boolean;
 }
 
 export default function IntegrationsTab({ activeBusiness, copyToClipboard, onUpdateBusiness }: IntegrationsTabProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const sessionDataRef = useRef<{ waba_id?: string; phone_number_id?: string }>({});
 
   // States for Business Profile update
   const [businessName, setBusinessName] = useState(activeBusiness.name);
@@ -56,7 +59,8 @@ export default function IntegrationsTab({ activeBusiness, copyToClipboard, onUpd
   const [waStatus, setWaStatus] = useState<ChannelStatus | null>(null);
   const [waError, setWaError] = useState<string | null>(null);
   const [connectingWA, setConnectingWA] = useState(false);
-  const [waDevMode, setWaDevMode] = useState(true);
+  const [waDevMode, setWaDevMode] = useState(false);
+  const [metaConfig, setMetaConfig] = useState<{ meta_app_id: string; meta_config_id?: string } | null>(null);
 
   const [loadingInsta, setLoadingInsta] = useState(true);
   const [instaStatus, setInstaStatus] = useState<ChannelStatus | null>(null);
@@ -74,6 +78,11 @@ export default function IntegrationsTab({ activeBusiness, copyToClipboard, onUpd
   useEffect(() => {
     fetchWAStatus();
     fetchInstaStatus();
+
+    // Pre-fetch Meta configuration for Embedded Signup
+    api.getMetaConfig()
+      .then(cfg => setMetaConfig(cfg))
+      .catch(err => console.warn("Could not prefetch Meta config:", err));
 
     // Animate container elements
     if (containerRef.current) {
@@ -118,7 +127,9 @@ export default function IntegrationsTab({ activeBusiness, copyToClipboard, onUpd
     }
 
     // Fetch Meta App ID from the backend config endpoint
-    const config = await api.getMetaConfig();
+    const config = metaConfig || await api.getMetaConfig();
+    setMetaConfig(config);
+
     if (!config.meta_app_id) {
       throw new Error("Meta App ID is not configured on the backend. Please set META_APP_ID in your backend settings.");
     }
@@ -130,7 +141,7 @@ export default function IntegrationsTab({ activeBusiness, copyToClipboard, onUpd
           appId            : config.meta_app_id,
           autoLogAppEvents : true,
           xfbml            : true,
-          version          : 'v25.0',
+          version          : 'v21.0',
           cookie           : true
         });
         resolve((window as any).FB);
@@ -170,6 +181,8 @@ export default function IntegrationsTab({ activeBusiness, copyToClipboard, onUpd
   const handleWAConnect = async () => {
     setConnectingWA(true);
     setWaError(null);
+    sessionDataRef.current = {};
+
     try {
       if (waDevMode) {
         await api.saveMetaAuthCode("mock_wa_code_" + Math.random().toString(36).substring(7));
@@ -181,14 +194,70 @@ export default function IntegrationsTab({ activeBusiness, copyToClipboard, onUpd
           throw new Error("Could not load or initialize Facebook SDK.");
         }
 
+        const config = metaConfig || await api.getMetaConfig();
+
+        // Setup postMessage listener for Embedded Signup session info (Coexistence & WABA metadata)
+        const sessionInfoListener = (event: MessageEvent) => {
+          if (event.origin !== "https://www.facebook.com" && event.origin !== "https://web.facebook.com") {
+            return;
+          }
+          try {
+            const rawData = event.data;
+            const data = typeof rawData === "string" ? JSON.parse(rawData) : rawData;
+            
+            if (data && data.type === "WA_EMBEDDED_SIGNUP") {
+              console.log("[META EMBEDDED SIGNUP EVENT]:", data);
+              if (data.event === "FINISH" && data.data) {
+                sessionDataRef.current = {
+                  phone_number_id: data.data.phone_number_id,
+                  waba_id: data.data.waba_id,
+                };
+              } else if (data.event === "CANCEL") {
+                console.warn("[META EMBEDDED SIGNUP] User cancelled signup flow.");
+              }
+            }
+          } catch (e) {
+            // Ignore non-JSON postMessages
+          }
+        };
+
+        window.addEventListener("message", sessionInfoListener);
+
+        // Build FB.login options supporting Coexistence & Config ID
+        const loginOptions: Record<string, any> = {
+          response_type: "code",
+          override_default_response_type: true,
+          extras: {
+            feature: "whatsapp_embedded_signup",
+            sessionInfoVersion: "3",
+            setup: {}
+          }
+        };
+
+        if (config.meta_config_id) {
+          loginOptions.config_id = config.meta_config_id;
+        } else {
+          loginOptions.scope = "whatsapp_business_management,whatsapp_business_messaging";
+        }
+
         FBInstance.login(
           (response: any) => {
             (async () => {
+              window.removeEventListener("message", sessionInfoListener);
+
               if (response.authResponse && response.authResponse.code) {
                 try {
-                  // Determine the correct redirect URI for the exchange (where the popup was initialized)
                   const redirectUri = window.location.origin;
-                  await api.saveMetaAuthCode(response.authResponse.code, redirectUri);
+                  const capturedWaba = sessionDataRef.current.waba_id;
+                  const capturedPhoneId = sessionDataRef.current.phone_number_id;
+
+                  console.log("[META AUTH] Exchanging code with server. WABA ID:", capturedWaba, "Phone ID:", capturedPhoneId);
+                  await api.saveMetaAuthCode(
+                    response.authResponse.code,
+                    redirectUri,
+                    capturedWaba,
+                    capturedPhoneId
+                  );
                   await fetchWAStatus();
                 } catch (ex: any) {
                   setWaError(ex.message || "Failed to exchange auth credentials with the server.");
@@ -199,14 +268,7 @@ export default function IntegrationsTab({ activeBusiness, copyToClipboard, onUpd
               setConnectingWA(false);
             })();
           },
-          {
-            scope: "whatsapp_business_management,whatsapp_business_messaging",
-            response_type: "code",
-            override_default_response_type: true,
-            extras: {
-              feature: "whatsapp_embedded_signup"
-            }
-          }
+          loginOptions
         );
       }
     } catch (err: any) {
@@ -392,14 +454,22 @@ export default function IntegrationsTab({ activeBusiness, copyToClipboard, onUpd
             <div className="bg-white border border-slate-200 p-6 space-y-6 shadow-xs rounded-2xl">
               <div className="flex flex-col md:flex-row justify-between items-start gap-4">
                 <div>
-                  <span className="font-mono text-[9px] text-emerald-700 tracking-widest font-bold uppercase bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-md">
-                    ACTIVE (AI TAKEOVER ENABLED)
-                  </span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono text-[9px] text-emerald-700 tracking-widest font-bold uppercase bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-md">
+                      ACTIVE (AI TAKEOVER ENABLED)
+                    </span>
+                    {waStatus.coexistence_enabled && (
+                      <span className="font-mono text-[9px] text-emerald-800 tracking-widest font-bold uppercase bg-emerald-100/70 border border-emerald-300 px-2.5 py-1 rounded-md flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                        COEXISTENCE ACTIVE
+                      </span>
+                    )}
+                  </div>
                   <h3 className="font-display text-xl font-extrabold text-slate-800 uppercase mt-4">
                     {waStatus.display_name || "WhatsApp Business Account"}
                   </h3>
                   <p className="font-body text-sm text-slate-500 mt-1 leading-relaxed">
-                    Incoming messages to your business number are processed by your AI agent, while you retain manual chat controls on your WhatsApp Business app.
+                    Incoming messages to your business number are processed by your AI agent, while you retain full simultaneous access on your native WhatsApp Business mobile app.
                   </p>
                 </div>
                 <button
@@ -410,10 +480,14 @@ export default function IntegrationsTab({ activeBusiness, copyToClipboard, onUpd
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-slate-100 pt-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-t border-slate-100 pt-6">
                 <div className="p-4 bg-slate-50 border border-slate-200 font-mono text-sm text-left rounded-xl">
                   <span className="block text-slate-450 text-[9px] uppercase tracking-wider font-bold mb-1">WhatsApp Phone ID</span>
                   <span className="text-slate-800 font-bold select-all">{waStatus.phone_number_id || "N/A"}</span>
+                </div>
+                <div className="p-4 bg-slate-50 border border-slate-200 font-mono text-sm text-left rounded-xl">
+                  <span className="block text-slate-450 text-[9px] uppercase tracking-wider font-bold mb-1">WABA Account ID</span>
+                  <span className="text-slate-800 font-bold select-all">{waStatus.waba_id || "N/A"}</span>
                 </div>
                 <div className="p-4 bg-slate-50 border border-slate-200 font-mono text-sm text-left rounded-xl">
                   <span className="block text-slate-450 text-[9px] uppercase tracking-wider font-bold mb-1">API Provider</span>
