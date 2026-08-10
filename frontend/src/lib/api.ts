@@ -392,7 +392,7 @@ export const api = {
     return res.json();
   },
 
-  async saveMetaAuthCode(code: string, redirectUri?: string, wabaId?: string, phoneNumberId?: string): Promise<any> {
+  async saveMetaAuthCode(code: string, redirectUri?: string, wabaId?: string | null, phoneNumberId?: string | null, setupStage?: string): Promise<any> {
     const res = await fetch(`${BACKEND_URL}/api/integrations/whatsapp/meta/auth`, {
       method: "POST",
       headers: getHeaders({ "Content-Type": "application/json" }),
@@ -400,7 +400,8 @@ export const api = {
         code, 
         redirect_uri: redirectUri,
         waba_id: wabaId,
-        phone_number_id: phoneNumberId
+        phone_number_id: phoneNumberId,
+        setup_stage: setupStage
       }),
     });
     if (!res.ok) {
@@ -410,7 +411,7 @@ export const api = {
     return res.json();
   },
 
-  async getMetaIntegrationStatus(): Promise<{ connected: boolean; provider?: string; phone_number_id?: string; waba_id?: string; display_name?: string; verify_token?: string; coexistence_enabled?: boolean }> {
+  async getMetaIntegrationStatus(): Promise<{ connected: boolean; status?: "not_connected" | "portfolio_created" | "fully_connected"; provider?: string; phone_number_id?: string; waba_id?: string; display_name?: string; verify_token?: string; coexistence_enabled?: boolean; portfolio_created_at?: string }> {
     const res = await fetch(`${BACKEND_URL}/api/integrations/whatsapp/meta/status`, {
       headers: getHeaders(),
     });

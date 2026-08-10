@@ -30,14 +30,16 @@ interface IntegrationsTabProps {
 
 interface ChannelStatus {
   connected: boolean;
+  status?: "not_connected" | "portfolio_created" | "fully_connected";
   provider?: string;
-  phone_number_id?: string;
-  waba_id?: string;
+  phone_number_id?: string | null;
+  waba_id?: string | null;
   display_name?: string;
   verify_token?: string;
   page_id?: string;
   username?: string;
   coexistence_enabled?: boolean;
+  portfolio_created_at?: string;
 }
 
 export default function IntegrationsTab({ activeBusiness, copyToClipboard, onUpdateBusiness }: IntegrationsTabProps) {
@@ -178,14 +180,18 @@ export default function IntegrationsTab({ activeBusiness, copyToClipboard, onUpd
     });
   };
 
-  const handleWAConnect = async () => {
+  const handleWAConnect = async (targetStage: "initial" | "connect_number" = "initial") => {
     setConnectingWA(true);
     setWaError(null);
     sessionDataRef.current = {};
 
     try {
       if (waDevMode) {
-        await api.saveMetaAuthCode("mock_wa_code_" + Math.random().toString(36).substring(7));
+        if (targetStage === "connect_number") {
+          await api.saveMetaAuthCode("mock_wa_code_stage2", undefined, waStatus?.waba_id || "waba_mock_9999888877", "1258271660696784", "fully_connected");
+        } else {
+          await api.saveMetaAuthCode("mock_wa_code_stage1", undefined, "waba_mock_9999888877", undefined, "portfolio_created");
+        }
         await fetchWAStatus();
         setConnectingWA(false);
       } else {
@@ -209,8 +215,8 @@ export default function IntegrationsTab({ activeBusiness, copyToClipboard, onUpd
               console.log("[META EMBEDDED SIGNUP EVENT]:", data);
               if (data.event === "FINISH" && data.data) {
                 sessionDataRef.current = {
-                  phone_number_id: data.data.phone_number_id,
-                  waba_id: data.data.waba_id,
+                  phone_number_id: data.data.phone_number_id || undefined,
+                  waba_id: data.data.waba_id || undefined,
                 };
               } else if (data.event === "CANCEL") {
                 console.warn("[META EMBEDDED SIGNUP] User cancelled signup flow.");
@@ -222,6 +228,11 @@ export default function IntegrationsTab({ activeBusiness, copyToClipboard, onUpd
         };
 
         window.addEventListener("message", sessionInfoListener);
+
+        // Pre-fill setup if user is continuing from Stage 1 to connect number to existing WABA
+        const setupConfig = targetStage === "connect_number" && waStatus?.waba_id ? {
+          waba: { id: waStatus.waba_id }
+        } : {};
 
         // Build FB.login options supporting Coexistence & Config ID
         const loginOptions: Record<string, any> = {
@@ -248,15 +259,17 @@ export default function IntegrationsTab({ activeBusiness, copyToClipboard, onUpd
               if (response.authResponse && response.authResponse.code) {
                 try {
                   const redirectUri = window.location.origin;
-                  const capturedWaba = sessionDataRef.current.waba_id;
-                  const capturedPhoneId = sessionDataRef.current.phone_number_id;
+                  const capturedWaba = sessionDataRef.current.waba_id || waStatus?.waba_id || undefined;
+                  const capturedPhoneId = sessionDataRef.current.phone_number_id || undefined;
+                  const determinedStage = capturedPhoneId ? "fully_connected" : "portfolio_created";
 
-                  console.log("[META AUTH] Exchanging code with server. WABA ID:", capturedWaba, "Phone ID:", capturedPhoneId);
+                  console.log("[META AUTH] Exchanging code with server. WABA ID:", capturedWaba, "Phone ID:", capturedPhoneId, "Stage:", determinedStage);
                   await api.saveMetaAuthCode(
                     response.authResponse.code,
                     redirectUri,
                     capturedWaba,
-                    capturedPhoneId
+                    capturedPhoneId,
+                    determinedStage
                   );
                   await fetchWAStatus();
                 } catch (ex: any) {
@@ -450,7 +463,91 @@ export default function IntegrationsTab({ activeBusiness, copyToClipboard, onUpd
               <Loader2 className="w-6 h-6 animate-spin text-[#128C7E]" />
               <span className="font-mono text-[9px] tracking-widest text-slate-400 uppercase font-bold">Querying WhatsApp Status...</span>
             </div>
-          ) : waStatus?.connected ? (
+          ) : waStatus?.connected && (!waStatus?.phone_number_id || waStatus?.status === "portfolio_created") ? (
+            /* ==================== STAGE 1: PORTFOLIO CREATED / PHONE PENDING ==================== */
+            <div className="bg-white border border-slate-200 p-6 sm:p-8 space-y-6 shadow-xs rounded-2xl">
+              <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono text-[9px] text-emerald-800 tracking-widest font-bold uppercase bg-emerald-100/80 border border-emerald-300 px-2.5 py-1 rounded-md flex items-center gap-1.5">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                      BUSINESS PORTFOLIO CONNECTED
+                    </span>
+                    <span className="font-mono text-[9px] text-amber-800 tracking-widest font-bold uppercase bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-md flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                      PHONE SETUP PENDING
+                    </span>
+                  </div>
+                  <h3 className="font-display text-xl font-extrabold text-slate-800 uppercase mt-3">
+                    Business Setup Complete ✓
+                  </h3>
+                  <p className="font-body text-sm text-slate-500 mt-1 leading-relaxed max-w-2xl">
+                    Your Meta Business Portfolio has been created and linked to AnytimeLLM. You can connect your WhatsApp phone number now or whenever you are ready.
+                  </p>
+                </div>
+                <button
+                  onClick={handleWADisconnect}
+                  className="border border-slate-200 hover:border-red-400 hover:bg-red-50/50 text-slate-600 hover:text-red-600 rounded-xl py-1.5 px-3.5 font-mono text-[9px] tracking-wider uppercase transition-all duration-200 cursor-pointer font-bold shrink-0"
+                >
+                  Reset Integration
+                </button>
+              </div>
+
+              {/* Progressive Setup Checklist */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-slate-100 pt-6">
+                <div className="p-4 bg-emerald-50/40 border border-emerald-200/80 rounded-xl flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 mt-0.5">
+                    <CheckCircle2 className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="block font-display text-xs font-bold uppercase tracking-wider text-slate-800">1. Business Portfolio & WABA</span>
+                    <span className="block font-mono text-[10px] text-slate-500 mt-0.5">WABA ID: <strong className="text-slate-800 select-all">{waStatus.waba_id || "Active"}</strong></span>
+                    <span className="inline-block font-mono text-[9px] text-emerald-700 font-bold mt-1">✓ Setup Complete</span>
+                  </div>
+                </div>
+
+                <div className="p-4 bg-amber-50/40 border border-amber-200/80 rounded-xl flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center shrink-0 mt-0.5 font-mono text-xs font-bold">
+                    2
+                  </div>
+                  <div>
+                    <span className="block font-display text-xs font-bold uppercase tracking-wider text-slate-800">2. WhatsApp Phone Number</span>
+                    <span className="block font-body text-xs text-slate-500 mt-0.5">Connect your business number with Coexistence support</span>
+                    <span className="inline-block font-mono text-[9px] text-amber-700 font-bold mt-1">⏳ Ready for Setup</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Stage 2 Action CTA */}
+              <div className="p-6 bg-slate-50 border border-slate-200 flex flex-col md:flex-row items-center justify-between gap-6 rounded-2xl">
+                <div className="text-left">
+                  <h4 className="font-display text-sm text-slate-800 uppercase font-bold tracking-wider">Connect WhatsApp Phone Number</h4>
+                  <p className="font-body text-xs text-slate-500 mt-1">
+                    Launch Embedded Signup to select or add your phone number to your linked WhatsApp account.
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => handleWAConnect("connect_number")}
+                  disabled={connectingWA}
+                  className="w-full md:w-auto h-12 px-8 bg-gradient-to-r from-[#128C7E] to-[#25D366] hover:opacity-95 text-white font-mono text-sm tracking-[0.2em] uppercase flex items-center justify-center gap-2 transition-all duration-300 disabled:opacity-50 cursor-pointer shadow-sm font-bold rounded-xl"
+                >
+                  {connectingWA ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      CONNECTING...
+                    </>
+                  ) : (
+                    <>
+                      <MessageSquare className="w-4 h-4" />
+                      CONNECT WHATSAPP NUMBER
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          ) : waStatus?.connected && waStatus?.phone_number_id ? (
+            /* ==================== STAGE 2: FULLY CONNECTED & ACTIVE ==================== */
             <div className="bg-white border border-slate-200 p-6 space-y-6 shadow-xs rounded-2xl">
               <div className="flex flex-col md:flex-row justify-between items-start gap-4">
                 <div>
@@ -533,6 +630,7 @@ export default function IntegrationsTab({ activeBusiness, copyToClipboard, onUpd
               )}
             </div>
           ) : (
+            /* ==================== STAGE 0: NOT CONNECTED ==================== */
             <div className="bg-white border border-slate-200 p-8 space-y-6 shadow-xs rounded-2xl">
               <div>
                 <span className="font-mono text-[9px] text-[#128C7E] tracking-widest uppercase font-bold bg-[#128C7E]/5 px-2 py-0.5 rounded border border-[#128C7E]/20">Meta Cloud Channel</span>
@@ -540,16 +638,16 @@ export default function IntegrationsTab({ activeBusiness, copyToClipboard, onUpd
                   Link WhatsApp Business API
                 </h3>
                 <p className="font-body text-sm text-slate-500 leading-relaxed max-w-2xl">
-                  Connect your business phone number to respond to orders, query catalogs, and answers FAQ autonomously.
+                  Connect your business to respond to orders, query catalogs, and answers FAQ autonomously with full Coexistence support.
                 </p>
               </div>
 
               {/* Onboarding Trigger Controls */}
               <div className="p-6 bg-slate-50 border border-slate-200 flex flex-col md:flex-row items-center justify-between gap-6 rounded-2xl">
                 <div className="text-left">
-                  <h4 className="font-display text-sm text-slate-800 uppercase font-bold tracking-wider">Start Verification Flow</h4>
+                  <h4 className="font-display text-sm text-slate-800 uppercase font-bold tracking-wider">Start Onboarding Flow</h4>
                   <p className="font-body text-xs text-slate-500 mt-1">
-                    Initiate setup in Meta Developer Dashboard.
+                    Create or select your Meta Business Portfolio, then connect your WhatsApp phone number.
                   </p>
 
                   {/* Developer Mock Toggle */}
@@ -568,7 +666,7 @@ export default function IntegrationsTab({ activeBusiness, copyToClipboard, onUpd
                 </div>
 
                 <button
-                  onClick={handleWAConnect}
+                  onClick={() => handleWAConnect("initial")}
                   disabled={connectingWA}
                   className="w-full md:w-auto h-12 px-8 bg-gradient-to-r from-[#128C7E] to-[#25D366] hover:opacity-95 text-white font-mono text-sm tracking-[0.2em] uppercase flex items-center justify-center gap-2 transition-all duration-300 disabled:opacity-50 cursor-pointer shadow-sm font-bold rounded-xl"
                 >
@@ -578,7 +676,7 @@ export default function IntegrationsTab({ activeBusiness, copyToClipboard, onUpd
                       CONNECTING...
                     </>
                   ) : (
-                    "Connect WhatsApp"
+                    "Start WhatsApp Setup"
                   )}
                 </button>
               </div>
