@@ -427,6 +427,18 @@ export const api = {
     return res.json();
   },
 
+  async disconnectWhatsApp(): Promise<any> {
+    const res = await fetch(`${BACKEND_URL}/api/integrations/whatsapp/meta/disconnect`, {
+      method: "POST",
+      headers: getHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || "Failed to disconnect WhatsApp.");
+    }
+    return res.json();
+  },
+
 
   async getInstagramIntegrationStatus(): Promise<{ connected: boolean; provider?: string; page_id?: string; username?: string; verify_token?: string }> {
     const res = await fetch(`${BACKEND_URL}/api/integrations/instagram/status`, {

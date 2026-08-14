@@ -294,13 +294,18 @@ export default function IntegrationsTab({ activeBusiness, copyToClipboard, onUpd
   const handleWADisconnect = async () => {
     if (!confirm("Are you sure you want to disconnect WhatsApp? Your chatbot will stop responding to WhatsApp customers.")) return;
     setLoadingWA(true);
+    setWaError(null);
     try {
-      await api.updateBusinessSettings(activeBusiness.id, {
-        whatsapp_provider: "mock"
-      });
+      await api.disconnectWhatsApp();
       await fetchWAStatus();
-    } catch (err) {
-      setWaError("Failed to disconnect WhatsApp integration.");
+      if (onUpdateBusiness) {
+        const updatedBiz = await api.getMyBusiness();
+        if (updatedBiz) {
+          onUpdateBusiness(updatedBiz);
+        }
+      }
+    } catch (err: any) {
+      setWaError(err.message || "Failed to disconnect WhatsApp integration.");
     } finally {
       setLoadingWA(false);
     }
