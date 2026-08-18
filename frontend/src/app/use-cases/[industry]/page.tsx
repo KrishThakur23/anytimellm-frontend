@@ -13,8 +13,13 @@ export async function generateStaticParams() {
   }));
 }
 
-export default function IndustryPage({ params }: { params: { industry: string } }) {
-  const data = getIndustry(params.industry);
+export default async function IndustryPage({
+  params,
+}: {
+  params: Promise<{ industry: string }>;
+}) {
+  const resolvedParams = await params; // ✅ Awaited the Promise first!
+  const data = getIndustry(resolvedParams.industry);
 
   if (!data) {
     notFound();
